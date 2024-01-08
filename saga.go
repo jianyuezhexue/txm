@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/gomodule/redigo/redis"
 	"gorm.io/gorm"
 )
 
@@ -28,6 +29,7 @@ type Saga struct {
 	ctx              context.Context        // 上下文
 	opts             *Options               // 配置选项｜超时控制，轮询时间间隔
 	db               *gorm.DB               // DB连接
+	redis            redis.Conn             // Redis连接
 	val              map[string]interface{} // 中间值传递
 	executeFuncPool  map[string]SagaFunc    // 执行函数池
 	roolBackFuncPool map[string]SagaFunc    // 补偿函数池
@@ -47,10 +49,15 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 		errChan:          make(chan error),
 	}
 
+	// 配置参数
 	for _, opt := range opts {
 		opt(txManager.opts)
 	}
 	repair(txManager.opts)
+
+	// 连接Db
+	txManager.db = initGorm()
+	txManager.redis = GetRedisConn()
 
 	return txManager
 }
@@ -108,6 +115,7 @@ func (s *Saga) Test() error {
 func (s *Saga) Commit() error {
 	// 释放资源
 	defer close(s.errChan)
+	defer s.redis.Close()
 
 	// 用户+函数名 单用户加锁
 
