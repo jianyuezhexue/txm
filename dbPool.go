@@ -9,7 +9,7 @@ import (
 )
 
 func initGorm() *gorm.DB {
-	dsn := "root:root@tcp(host:localhost)/txm"
+	dsn := "root:root@tcp(127.0.0.1:3306)/txm"
 
 	// 连接&设置连接池参数
 	sqlDB, err := sql.Open("mysql", dsn)
