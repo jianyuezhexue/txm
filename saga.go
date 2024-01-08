@@ -119,54 +119,58 @@ func (s *Saga) Commit() error {
 
 	// 用户+函数名 单用户加锁
 
-	// 开启本地事务
-
 	// 创建唯一事务Id
 
-	// 超时控制
+	// 开启本地事务
+	s.db.Transaction(func(tx *gorm.DB) error {
 
-	// 并发开始
-	var wg sync.WaitGroup
+		// 超时控制
 
-	// 并发执行正向函数
-	for funcName, itemFunc := range s.executeFuncPool {
-		wg.Add(1)
+		// 并发开始
+		var wg sync.WaitGroup
 
-		// 悬挂校验
-		// todo
+		// 并发执行正向函数
+		for funcName, itemFunc := range s.executeFuncPool {
+			wg.Add(1)
 
-		// 正常执行正向操作
-		res, err := itemFunc(s)
-		wg.Done()
-		fmt.Println(res)
-		if err != nil {
-			s.errChan <- err
-			s.errArr = append(s.errArr, funcName)
-			break
-		}
-	}
+			// 悬挂校验
+			// todo
 
-	wg.Wait()
-
-	//  全部执行成功
-	if len(s.errChan) == 0 {
-		return nil
-	}
-
-	// 有异常执行逆向函数
-	for _, funcName := range s.errArr {
-		fn := s.roolBackFuncPool[funcName]
-		// 空补偿校验
-		// todo
-
-		// 正常执行补偿
-		res, err := fn(s)
-		if err != nil {
-			// 记录日志 & 记录到重试数组中
-			fmt.Println(err.Error())
+			// 正常执行正向操作
+			res, err := itemFunc(s)
+			wg.Done()
 			fmt.Println(res)
+			if err != nil {
+				s.errChan <- err
+				s.errArr = append(s.errArr, funcName)
+				break
+			}
 		}
-	}
+
+		wg.Wait()
+
+		//  全部执行成功
+		if len(s.errChan) == 0 {
+			return nil
+		}
+
+		// 有异常执行逆向函数
+		for _, funcName := range s.errArr {
+			fn := s.roolBackFuncPool[funcName]
+			// 空补偿校验
+			// todo
+
+			// 正常执行补偿
+			res, err := fn(s)
+			if err != nil {
+				// 记录日志 & 记录到重试数组中
+				fmt.Println(err.Error())
+				fmt.Println(res)
+			}
+		}
+
+		return nil
+	})
 
 	// 返回异常信息
 	err := <-s.errChan

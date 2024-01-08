@@ -12,7 +12,9 @@ func TestSaga(t *testing.T) {
 
 	// 1. 实例化Saga事务管理器
 	ctx := context.Background()
-	saga := NewSaga(ctx)
+	ipiCtx := context.WithValue(ctx, "openid", "123")
+	ipiCtx.Value("openid")
+	saga := NewSaga(ipiCtx)
 
 	// 2. 注册入库回传相关函数
 	saga.Register("func1", func(txm *Saga) (any, error) {
@@ -69,7 +71,7 @@ func NewDeliverRollBack(req4 string) (string, error) {
 	return "", nil
 }
 
-// 函数3执行: 销售单
+// 函数3执行: 销售单状态更新
 func SaleOrderReturn(req5 string) (string, error) {
 	return "", nil
 }
