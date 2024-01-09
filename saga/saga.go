@@ -1,4 +1,4 @@
-package txm
+package saga
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/gomodule/redigo/redis"
+	"github.com/jianyuezhexue/txm/util"
 	"gorm.io/gorm"
 )
 
@@ -56,8 +57,8 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 	repair(txManager.opts)
 
 	// 连接Db
-	txManager.db = initGorm()
-	txManager.redis = GetRedisConn()
+	txManager.db = util.InitGorm()
+	txManager.redis = util.GetRedisConn()
 
 	return txManager
 }

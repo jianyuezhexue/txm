@@ -1,4 +1,4 @@
-package txm
+package saga
 
 import (
 	"context"
@@ -47,6 +47,12 @@ func TestSaga(t *testing.T) {
 
 		return res, nil
 	})
+
+	// 6. 执行提交
+	err := saga.Commit()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 // 函数1执行:入库回传逻辑处理

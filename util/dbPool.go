@@ -1,4 +1,4 @@
-package txm
+package util
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func initGorm() *gorm.DB {
+func InitGorm() *gorm.DB {
 	dsn := "root:root@tcp(127.0.0.1:3306)/txm"
 
 	// 连接&设置连接池参数
