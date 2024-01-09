@@ -32,7 +32,7 @@ type Saga struct {
 	db               *gorm.DB               // DB连接
 	redis            redis.Conn             // Redis连接
 	val              map[string]interface{} // 中间值传递
-	executeFuncPool  map[string]SagaFunc    // 执行函数池
+	actionFuncPool   map[string]SagaFunc    // 执行函数池
 	roolBackFuncPool map[string]SagaFunc    // 补偿函数池
 	errArr           []string               // 异常待回滚函数
 	errChan          chan (error)           // 异常错误
@@ -44,7 +44,7 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 		ctx:              ctx,
 		opts:             &Options{},
 		val:              map[string]interface{}{},
-		executeFuncPool:  map[string]SagaFunc{},
+		actionFuncPool:   map[string]SagaFunc{},
 		roolBackFuncPool: map[string]SagaFunc{},
 		errArr:           []string{},
 		errChan:          make(chan error),
@@ -88,8 +88,8 @@ func (s *Saga) GetVal(key string) (any, error) {
 }
 
 // 注册组件方法
-func (s *Saga) Register(funcName string, executeFunc SagaFunc, roolBackFunc SagaFunc) error {
-	_, ok := s.executeFuncPool[funcName]
+func (s *Saga) Register(funcName string, actionFunc SagaFunc, roolBackFunc SagaFunc) error {
+	_, ok := s.actionFuncPool[funcName]
 	if ok {
 		return fmt.Errorf("正向函数[%v]重复注册,请检查", funcName)
 	}
@@ -97,7 +97,7 @@ func (s *Saga) Register(funcName string, executeFunc SagaFunc, roolBackFunc Saga
 	if ok2 {
 		return fmt.Errorf("补偿函数[%v]重复注册,请检查", funcName)
 	}
-	s.executeFuncPool[funcName] = executeFunc
+	s.actionFuncPool[funcName] = actionFunc
 	s.roolBackFuncPool[funcName] = roolBackFunc
 	return nil
 }
@@ -131,7 +131,7 @@ func (s *Saga) Commit() error {
 		var wg sync.WaitGroup
 
 		// 并发执行正向函数
-		for funcName, itemFunc := range s.executeFuncPool {
+		for funcName, itemFunc := range s.actionFuncPool {
 			wg.Add(1)
 
 			// 悬挂校验
