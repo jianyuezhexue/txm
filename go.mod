@@ -1,6 +1,6 @@
 module github.com/jianyuezhexue/txm
 
-go 1.21.4
+go 1.19.9
 
 require gorm.io/gorm v1.25.5
 
