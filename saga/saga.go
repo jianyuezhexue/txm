@@ -133,13 +133,13 @@ func (s *Saga) Commit() error {
 		// 并发执行正向函数
 		for funcName, itemFunc := range s.executeFuncPool {
 			wg.Add(1)
+			defer wg.Done()
 
 			// 悬挂校验
 			// todo
 
 			// 正常执行正向操作
 			res, err := itemFunc(s)
-			wg.Done()
 			fmt.Println(res)
 			if err != nil {
 				s.errChan <- err
