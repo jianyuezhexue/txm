@@ -28,3 +28,21 @@ func GetRedisConn() redis.Conn {
 func CloseRedisConn(conn redis.Conn) {
 	conn.Close()
 }
+
+// 分布式单用户锁
+func Lock(conn redis.Conn, key string, time time.Duration) (bool, error) {
+	return redis.Bool(conn.Do("SET", key, "1", "EX", time.Seconds(), "NX"))
+}
+
+// 释放单用户锁
+func Unlock(conn redis.Conn, key string) error {
+	iLoop := 3
+	for {
+		_, err := conn.Do("DEL", key)
+		iLoop--
+		if err == nil || iLoop <= 0 {
+			break
+		}
+	}
+	return nil
+}

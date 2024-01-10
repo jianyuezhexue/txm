@@ -18,9 +18,7 @@ func TestSaga(t *testing.T) {
 
 	// 1. 实例化Saga事务管理器
 	ctx := context.Background()
-	ipiCtx := context.WithValue(ctx, "openid", "123")
-	ipiCtx.Value("openid")
-	saga := NewSaga(ipiCtx)
+	saga := NewSaga(ctx, "user_001")
 
 	// 2. 注册入库回传相关函数
 	saga.Register("func1", func(txm *Saga) (any, error) {

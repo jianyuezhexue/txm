@@ -12,7 +12,8 @@ import (
 
 // Saga 分布式事务接口定义
 type SagaTxManager interface {
-	singleLock() error                         // 单用户锁
+	tranLock() error                           // 事务屏障
+	branchbLock(branchName string) error       // 子事务屏障
 	SetVal(string, any) error                  // 设置值
 	GetVal(string) (any, error)                // 获取值
 	Register(string, SagaFunc, SagaFunc) error // 注册函数
@@ -32,6 +33,7 @@ type Saga struct {
 	db               *gorm.DB               // DB连接
 	redis            redis.Conn             // Redis连接
 	val              map[string]interface{} // 中间值传递
+	tid              string                 // 事务ID
 	actionFuncPool   map[string]SagaFunc    // 执行函数池
 	roolBackFuncPool map[string]SagaFunc    // 补偿函数池
 	errArr           []string               // 异常待回滚函数
@@ -39,11 +41,12 @@ type Saga struct {
 }
 
 // 实例化 Saga
-func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
+func NewSaga(ctx context.Context, openid string, opts ...Option) SagaTxManager {
 	txManager := &Saga{
 		ctx:              ctx,
 		opts:             &Options{},
 		val:              map[string]interface{}{},
+		tid:              openid,
 		actionFuncPool:   map[string]SagaFunc{},
 		roolBackFuncPool: map[string]SagaFunc{},
 		errArr:           []string{},
@@ -56,6 +59,9 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 	}
 	repair(txManager.opts)
 
+	// 生成本次事务ID
+	txManager.tid += "_" + util.GetFuncName()
+
 	// 连接Db
 	txManager.db = util.InitGorm()
 	txManager.redis = util.GetRedisConn()
@@ -63,8 +69,22 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 	return txManager
 }
 
-// 单用户锁
-func (s *Saga) singleLock() error {
+// 事务屏障
+func (s *Saga) tranLock() error {
+	getLock, _ := util.Lock(s.redis, s.tid, s.opts.Timeout)
+	if !getLock {
+		return fmt.Errorf("系统正在处理中")
+	}
+	return nil
+}
+
+// 子事务屏障
+func (s *Saga) branchbLock(branchName string) error {
+	banchKey := s.tid + "_" + branchName
+	getLock, _ := util.Lock(s.redis, banchKey, s.opts.Timeout)
+	if !getLock {
+		return fmt.Errorf("系统正在处理中")
+	}
 	return nil
 }
 
@@ -118,14 +138,16 @@ func (s *Saga) Commit() error {
 	defer close(s.errChan)
 	defer s.redis.Close()
 
-	// 用户+函数名 单用户加锁
+	// 事务超时控制
 
-	// 创建唯一事务Id
+	// 事务屏障锁
+	err := s.tranLock()
+	if err != nil {
+		return fmt.Errorf("系统正在处理中")
+	}
 
 	// 开启本地事务
 	s.db.Transaction(func(tx *gorm.DB) error {
-
-		// 超时控制
 
 		// 并发开始
 		var wg sync.WaitGroup
@@ -174,7 +196,7 @@ func (s *Saga) Commit() error {
 	})
 
 	// 返回异常信息
-	err := <-s.errChan
+	err = <-s.errChan
 	return err
 }
 

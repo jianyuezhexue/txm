@@ -3,7 +3,7 @@ package saga
 import "time"
 
 type Options struct {
-	// 事务执行时长限制
+	// 事务执行时长限制｜秒
 	Timeout time.Duration
 	// 轮询监控任务间隔时长
 	MonitorTick time.Duration
@@ -13,11 +13,11 @@ type Option func(*Options)
 
 func WithTimeout(timeout time.Duration) Option {
 	if timeout <= 0 {
-		timeout = 5 * time.Second
+		timeout = 5
 	}
 
 	return func(o *Options) {
-		o.Timeout = timeout
+		o.Timeout = timeout * time.Second
 	}
 }
 
@@ -37,6 +37,6 @@ func repair(o *Options) {
 	}
 
 	if o.Timeout <= 0 {
-		o.Timeout = 5 * time.Second
+		o.Timeout = 5
 	}
 }
