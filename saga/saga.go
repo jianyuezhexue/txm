@@ -17,7 +17,6 @@ type SagaTxManager interface {
 	SetVal(string, any) error                  // 设置值
 	GetVal(string) (any, error)                // 获取值
 	Register(string, SagaFunc, SagaFunc) error // 注册函数
-	checkAndRepair() error                     // 注册函数检查&基本信息补全
 	Test() error                               // 调试测试
 	Commit() error                             // 执行提交
 	Transaction(SagaFunc) error                // 事务执行
@@ -119,11 +118,6 @@ func (s *Saga) Register(funcName string, actionFunc SagaFunc, roolBackFunc SagaF
 	}
 	s.actionFuncPool[funcName] = actionFunc
 	s.roolBackFuncPool[funcName] = roolBackFunc
-	return nil
-}
-
-// 校验&修复补全
-func (s *Saga) checkAndRepair() error {
 	return nil
 }
 
