@@ -159,6 +159,7 @@ func (s *Saga) Commit() error {
 
 			// 正常执行正向操作
 			res, err := itemFunc(s)
+			// 记录日志&打印step
 			fmt.Println(res)
 			if err != nil {
 				s.errChan <- err
