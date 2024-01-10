@@ -12,14 +12,14 @@ import (
 
 // Saga 分布式事务接口定义
 type SagaTxManager interface {
-	tranLock() error                                  // 事务屏障
-	branchbLock(branchName string, action bool) error // 子事务屏障
-	SetVal(string, any) error                         // 设置值
-	GetVal(string) (any, error)                       // 获取值
-	Register(string, SagaFunc, SagaFunc) error        // 注册函数
-	Test() error                                      // 调试测试
-	Commit() error                                    // 执行提交
-	Transaction(SagaFunc) error                       // 事务执行
+	tranLock() error                           // 事务屏障
+	branchbLock(branchName string) error       // 子事务屏障
+	SetVal(string, any) error                  // 设置值
+	GetVal(string) (any, error)                // 获取值
+	Register(string, SagaFunc, SagaFunc) error // 注册函数
+	Test() error                               // 调试测试
+	Commit() error                             // 执行提交
+	Transaction(SagaFunc) error                // 事务执行
 }
 
 // 注册函数
@@ -78,11 +78,9 @@ func (s *Saga) tranLock() error {
 }
 
 // 子事务屏障
-func (s *Saga) branchbLock(branchName string, action bool) error {
+func (s *Saga) branchbLock(branchName string) error {
 	banchKey := s.tid + "_" + branchName
-	if !action {
-		banchKey += "_rollback"
-	}
+	// todo 区分正向还是逆向
 	getLock, _ := util.Lock(s.redis, banchKey, s.opts.Timeout)
 	if !getLock {
 		return fmt.Errorf("系统正在处理中")
