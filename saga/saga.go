@@ -12,11 +12,11 @@ import (
 
 // Saga 分布式事务接口定义
 type SagaTxManager interface {
-	singleLock() error                         // 单用户锁
+	tranLock() error                           // 事务屏障
+	branchbLock(branchName string) error       // 子事务屏障
 	SetVal(string, any) error                  // 设置值
 	GetVal(string) (any, error)                // 获取值
 	Register(string, SagaFunc, SagaFunc) error // 注册函数
-	checkAndRepair() error                     // 注册函数检查&基本信息补全
 	Test() error                               // 调试测试
 	Commit() error                             // 执行提交
 	Transaction(SagaFunc) error                // 事务执行
@@ -32,19 +32,21 @@ type Saga struct {
 	db               *gorm.DB               // DB连接
 	redis            redis.Conn             // Redis连接
 	val              map[string]interface{} // 中间值传递
-	executeFuncPool  map[string]SagaFunc    // 执行函数池
+	tid              string                 // 事务ID
+	actionFuncPool   map[string]SagaFunc    // 执行函数池
 	roolBackFuncPool map[string]SagaFunc    // 补偿函数池
 	errArr           []string               // 异常待回滚函数
 	errChan          chan (error)           // 异常错误
 }
 
 // 实例化 Saga
-func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
+func NewSaga(ctx context.Context, openid string, opts ...Option) SagaTxManager {
 	txManager := &Saga{
 		ctx:              ctx,
 		opts:             &Options{},
 		val:              map[string]interface{}{},
-		executeFuncPool:  map[string]SagaFunc{},
+		tid:              openid,
+		actionFuncPool:   map[string]SagaFunc{},
 		roolBackFuncPool: map[string]SagaFunc{},
 		errArr:           []string{},
 		errChan:          make(chan error),
@@ -56,6 +58,9 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 	}
 	repair(txManager.opts)
 
+	// 生成本次事务ID
+	txManager.tid += "_" + util.GetFuncName()
+
 	// 连接Db
 	txManager.db = util.InitGorm()
 	txManager.redis = util.GetRedisConn()
@@ -63,8 +68,23 @@ func NewSaga(ctx context.Context, opts ...Option) SagaTxManager {
 	return txManager
 }
 
-// 单用户锁
-func (s *Saga) singleLock() error {
+// 事务屏障
+func (s *Saga) tranLock() error {
+	getLock, _ := util.Lock(s.redis, s.tid, s.opts.Timeout)
+	if !getLock {
+		return fmt.Errorf("系统正在处理中")
+	}
+	return nil
+}
+
+// 子事务屏障
+func (s *Saga) branchbLock(branchName string) error {
+	banchKey := s.tid + "_" + branchName
+	// todo 区分正向还是逆向
+	getLock, _ := util.Lock(s.redis, banchKey, s.opts.Timeout)
+	if !getLock {
+		return fmt.Errorf("系统正在处理中")
+	}
 	return nil
 }
 
@@ -88,8 +108,8 @@ func (s *Saga) GetVal(key string) (any, error) {
 }
 
 // 注册组件方法
-func (s *Saga) Register(funcName string, executeFunc SagaFunc, roolBackFunc SagaFunc) error {
-	_, ok := s.executeFuncPool[funcName]
+func (s *Saga) Register(funcName string, actionFunc SagaFunc, roolBackFunc SagaFunc) error {
+	_, ok := s.actionFuncPool[funcName]
 	if ok {
 		return fmt.Errorf("正向函数[%v]重复注册,请检查", funcName)
 	}
@@ -97,13 +117,8 @@ func (s *Saga) Register(funcName string, executeFunc SagaFunc, roolBackFunc Saga
 	if ok2 {
 		return fmt.Errorf("补偿函数[%v]重复注册,请检查", funcName)
 	}
-	s.executeFuncPool[funcName] = executeFunc
+	s.actionFuncPool[funcName] = actionFunc
 	s.roolBackFuncPool[funcName] = roolBackFunc
-	return nil
-}
-
-// 校验&修复补全
-func (s *Saga) checkAndRepair() error {
 	return nil
 }
 
@@ -118,28 +133,33 @@ func (s *Saga) Commit() error {
 	defer close(s.errChan)
 	defer s.redis.Close()
 
-	// 用户+函数名 单用户加锁
+	// 事务超时控制
 
-	// 创建唯一事务Id
+	// 事务屏障锁
+	err := s.tranLock()
+	if err != nil {
+		return fmt.Errorf("系统正在处理中")
+	}
 
 	// 开启本地事务
 	s.db.Transaction(func(tx *gorm.DB) error {
-
-		// 超时控制
 
 		// 并发开始
 		var wg sync.WaitGroup
 
 		// 并发执行正向函数
-		for funcName, itemFunc := range s.executeFuncPool {
+		for funcName, itemFunc := range s.actionFuncPool {
 			wg.Add(1)
 			defer wg.Done()
+
+			// 子事务屏障
 
 			// 悬挂校验
 			// todo
 
 			// 正常执行正向操作
 			res, err := itemFunc(s)
+			// 记录日志&打印step
 			fmt.Println(res)
 			if err != nil {
 				s.errChan <- err
@@ -158,6 +178,8 @@ func (s *Saga) Commit() error {
 		// 有异常执行逆向函数
 		for _, funcName := range s.errArr {
 			fn := s.roolBackFuncPool[funcName]
+			// 子事务屏障
+
 			// 空补偿校验
 			// todo
 
@@ -174,7 +196,7 @@ func (s *Saga) Commit() error {
 	})
 
 	// 返回异常信息
-	err := <-s.errChan
+	err = <-s.errChan
 	return err
 }
 
